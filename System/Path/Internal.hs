@@ -1,21 +1,29 @@
-{-# LANGUAGE DataKinds          #-}
-{-# LANGUAGE DeriveAnyClass     #-}
-{-# LANGUAGE DerivingVia        #-}
-{-# LANGUAGE ExplicitNamespaces #-}
-{-# LANGUAGE GADTs              #-}
-{-# LANGUAGE KindSignatures     #-}
-{-# LANGUAGE LambdaCase         #-}
-{-# LANGUAGE PatternSynonyms    #-}
-{-# LANGUAGE ViewPatterns       #-}
+{-# LANGUAGE CPP                 #-}
+{-# LANGUAGE DataKinds           #-}
+{-# LANGUAGE DeriveAnyClass      #-}
+{-# LANGUAGE DerivingVia         #-}
+{-# LANGUAGE ExplicitNamespaces  #-}
+{-# LANGUAGE GADTs               #-}
+{-# LANGUAGE KindSignatures      #-}
+{-# LANGUAGE LambdaCase          #-}
+{-# LANGUAGE PatternSynonyms     #-}
+{-# LANGUAGE PolyKinds           #-}
+{-# LANGUAGE RankNTypes          #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications    #-}
+{-# LANGUAGE TypeOperators       #-}
+{-# LANGUAGE ViewPatterns        #-}
 
 module System.Path.Internal
-  ( Path
+  ( Path (..)
   , Platform (..)
   , Base (..)
   , Type (..)
+  , Or (..)
   , mk
   , any
 
+  , host
   , posix
   , win
   , abs
@@ -35,12 +43,16 @@ module System.Path.Internal
   )
 where
 
-import Prelude hiding (any, abs)
-import qualified Control.Exception as E
-import Control.Monad.Catch (MonadThrow)
+import Control.Applicative
+import Control.Monad.Catch (MonadThrow (..))
+import Data.Foldable (asum)
 import Data.Proxy
+import Prelude hiding (any, abs)
+import qualified System.Path.Internal.Exception as E
+import qualified System.Path.Internal.Normalization as N
+import qualified System.Path.Internal.Predicate as P
 
-data Path (s :: Platform) (b :: Base) (t :: Type) where
+data Path (p :: Platform) (b :: Base) (t :: Type) where
 
   PosixAbsDir :: FilePath -> Path 'Posix 'Abs 'Dir
   PosixAbsFile :: FilePath -> Path 'Posix 'Abs 'File
@@ -60,46 +72,138 @@ data Base = Abs | Rel
 
 data Type = Dir | File
 
-data Exception = Exception
-  deriving (Show, Eq)
+data ((x :: k) `Or` (y :: k)) (t :: k) where
+  Any :: (x `Or` y) t
+  First :: (x `Or` y) x
+  Second :: (x `Or` y) y
 
-instance E.Exception Exception where
-  -- displayException = undefined
+-- foo :: Path p b t
+-- foo = PosixAbsDir "/foo/"
+
+-- data SomePath = SomePath (Path p b t)
 
 mk ::
+  forall m p b t.
   MonadThrow m =>
-  Proxy s ->
-  Proxy b ->
-  Proxy t ->
+  ('Posix `Or` 'Win) p ->
+  ('Abs `Or` 'Rel) b ->
+  ('Dir `Or` 'File) t ->
   FilePath ->
-  m (Path s b t)
-mk Proxy Proxy Proxy = undefined
+  m (Path p b t)
+mk platform base type' path = undefined -- either throwM return $
+  -- case platform of
+  --   First ->
+  --     N.normalizePosix <$> P.isValidPosix path
 
-any :: Proxy s
-any = Proxy
+  -- either throwM return $ case p of
+    -- Any -> checkPlatform First path (checkBase b (checkType t (\_ fp -> _)))
 
-posix :: Proxy 'Posix
-posix = Proxy
+  -- case go p b t path :: Either E.Exception (Path p b t) of
+  --   Left e -> throwM e
+  --   Right x -> return x
+  where
 
-win :: Proxy 'Win
-win = Proxy
+    checkPlatform ::
+      ('Posix `Or` 'Win) p' ->
+      FilePath ->
+      (Platform -> FilePath -> Either E.Exception (Path p' b' t')) ->
+      Either E.Exception (Path p' b' t')
+    checkPlatform = undefined
 
-abs :: Proxy 'Abs
-abs = Proxy
+    checkBase ::
+      ('Abs `Or` 'Rel) b' ->
+      Platform ->
+      FilePath ->
+      (Platform -> FilePath -> Either E.Exception (Path p' b' t')) ->
+      Either E.Exception (Path p' b' t')
+    checkBase = undefined
 
-rel :: Proxy 'Rel
-rel = Proxy
+    checkType ::
+      ('Dir `Or` 'File) t' ->
+      Platform ->
+      FilePath ->
+      (Platform -> FilePath -> Either E.Exception (Path p' b' t')) ->
+      Either E.Exception (Path p' b' t')
+    checkType = undefined
 
-dir :: Proxy 'Dir
-dir = Proxy
+ -- ::
+ --      ('Posix `Or` 'Win) p' ->
+ --      ('Abs `Or` 'Rel) b' ->
+ --      ('Dir `Or` 'File) t' ->
+ --      FilePath ->
+ --      Either E.Exception (Path p' b' t')
+ --    go Any b t path =
+ --      case
 
-file :: Proxy 'File
-file = Proxy
+-- asum
+      -- [ forgetPlatform <$> go First b t path
+      -- , forgetPlatform <$> go Second b t path
+      -- , Left (E.IsNotValidPath path)
+      -- ]
 
-pattern IsPosix :: Path 'Posix b t -> Path s b t
+--   case platform of
+--     Any ->
+--       case host of
+--         First ->
+
+--       case P.isValidPosix of
+--         Nothing -> case P.isValidWin of
+--           Nothing -> throwM (E.IsNotValidAny path)
+--           Just path0 ->
+--             case base of
+--               Any ->
+
+--       if Posix.isValid path
+--         then undefined
+--         else if Win.isValid path
+--           then undefined
+--           else
+
+--     First ->
+--       if P.isValidPosix path
+--         then case base of
+--           Any -> if p
+
+-- if P.isValid
+--         else throwM (IsNotValidPosix path)
+--     Second ->
+--       if Win.isValid path
+--         then undefined
+--         else throwM (IsNotValidWin path)
+
+any :: (x `Or` y) t
+any = Any
+
+#if defined(mingw32_HOST_OS)
+host :: ('Posix `Or` 'Win) 'Win
+host = Second
+#else
+host :: ('Posix `Or` 'Win) 'Posix
+host = First
+#endif
+
+posix :: ('Posix `Or` 'Win) 'Posix
+posix = First
+
+win :: ('Posix `Or` 'Win) 'Win
+win = Second
+
+abs :: ('Abs `Or` 'Rel) 'Abs
+abs = First
+
+rel :: ('Abs `Or` 'Rel) 'Rel
+rel = Second
+
+dir :: ('Dir `Or` 'File) 'Dir
+dir = First
+
+file :: ('Dir `Or` 'File) 'File
+file = Second
+
+pattern IsPosix :: Path 'Posix b t -> Path p b t
 pattern IsPosix path <- (isPosix -> Just path)
 
-isPosix :: Path s b t -> Maybe (Path 'Posix b t)
+isPosix :: Path p b t -> Maybe (Path 'Posix b t)
 isPosix = \case
   PosixAbsDir path -> Just (PosixAbsDir path)
   PosixAbsFile path -> Just (PosixAbsFile path)
@@ -107,10 +211,10 @@ isPosix = \case
   PosixRelFile path -> Just (PosixRelFile path)
   _ -> Nothing
 
-pattern IsWin :: Path 'Win b t -> Path s b t
+pattern IsWin :: Path 'Win b t -> Path p b t
 pattern IsWin path <- (isWin -> Just path)
 
-isWin :: Path s b t -> Maybe (Path 'Win b t)
+isWin :: Path p b t -> Maybe (Path 'Win b t)
 isWin = \case
   WinAbsDir path -> Just (WinAbsDir path)
   WinAbsFile path -> Just (WinAbsFile path)
@@ -118,10 +222,10 @@ isWin = \case
   WinRelFile path -> Just (WinRelFile path)
   _ -> Nothing
 
-pattern IsAbs :: Path s 'Abs t -> Path s b t
+pattern IsAbs :: Path p 'Abs t -> Path p b t
 pattern IsAbs path <- (isAbs -> Just path)
 
-isAbs :: Path s b t -> Maybe (Path s 'Abs t)
+isAbs :: Path p b t -> Maybe (Path p 'Abs t)
 isAbs = \case
   PosixAbsDir path -> Just (PosixAbsDir path)
   PosixAbsFile path -> Just (PosixAbsFile path)
@@ -129,10 +233,10 @@ isAbs = \case
   WinAbsFile path -> Just (WinAbsFile path)
   _ -> Nothing
 
-pattern IsRel :: Path s 'Rel t -> Path s b t
+pattern IsRel :: Path p 'Rel t -> Path p b t
 pattern IsRel path <- (isRel -> Just path)
 
-isRel :: Path s b t -> Maybe (Path s 'Rel t)
+isRel :: Path p b t -> Maybe (Path p 'Rel t)
 isRel = \case
   PosixRelDir path -> Just (PosixRelDir path)
   PosixRelFile path -> Just (PosixRelFile path)
@@ -140,10 +244,10 @@ isRel = \case
   WinRelFile path -> Just (WinRelFile path)
   _ -> Nothing
 
-pattern IsDir :: Path s b 'Dir -> Path s b t
+pattern IsDir :: Path p b 'Dir -> Path p b t
 pattern IsDir path <- (isDir -> Just path)
 
-isDir :: Path s b t -> Maybe (Path s b 'Dir)
+isDir :: Path p b t -> Maybe (Path p b 'Dir)
 isDir = \case
   PosixAbsDir path -> Just (PosixAbsDir path)
   PosixRelDir path -> Just (PosixRelDir path)
@@ -151,10 +255,10 @@ isDir = \case
   WinRelDir path -> Just (WinRelDir path)
   _ -> Nothing
 
-pattern IsFile :: Path s b 'File -> Path s b t
+pattern IsFile :: Path p b 'File -> Path p b t
 pattern IsFile path <- (isFile -> Just path)
 
-isFile :: Path s b t -> Maybe (Path s b 'File)
+isFile :: Path p b t -> Maybe (Path p b 'File)
 isFile = \case
   PosixAbsFile path -> Just (PosixAbsFile path)
   PosixRelFile path -> Just (PosixRelFile path)
@@ -163,10 +267,10 @@ isFile = \case
   _ -> Nothing
 
 from ::
-  Proxy s ->
+  Proxy p ->
   Proxy b ->
   Proxy t ->
-  Path s b t ->
+  Path p b t ->
   FilePath
 from Proxy Proxy Proxy = \case
   PosixAbsDir path -> path
@@ -178,5 +282,38 @@ from Proxy Proxy Proxy = \case
   WinRelDir path -> path
   WinRelFile path -> path
 
-pattern Path :: FilePath -> Path s b t
+pattern Path :: FilePath -> Path p b t
 pattern Path path <- (from Proxy Proxy Proxy -> path)
+
+-- data SomePlatform b t where
+--   SomePlatform :: Path p b t -> SomePlatform p t
+
+forgetPlatform :: (forall p1. Path p1 b t -> r) -> Path p0 b t -> r
+forgetPlatform f = \case
+  PosixAbsDir path -> f (PosixAbsDir path)
+  PosixAbsFile path -> f (PosixAbsFile path)
+  PosixRelDir path -> f (PosixRelDir path)
+  PosixRelFile path -> f (PosixRelFile path)
+  WinAbsDir path -> f (WinAbsDir path)
+  WinAbsFile path -> f (WinAbsFile path)
+  WinRelDir path -> f (WinRelDir path)
+  WinRelFile path -> f (WinRelFile path)
+
+-- TODO So, this is interesting. Come think of it, it should be possible to
+-- erase type indices of GADTs because then they are virtually existentials
+-- and one would have to pattern match to discover actual types. It's not an
+-- invalid thing to do afaiu because it doesn't compromise soundness of the
+-- type system in any way. However, to do it we need to either do
+-- continuation passing style thingy as shown above in 'forgetPlatform' or
+-- to use an existential wrapper.
+--
+-- The problem with CPS is that we cannot have just a value of that type and
+-- put it in e.g. a record.
+--
+-- The problem with existential wrapper though is that the approach is not
+-- composable. We could desire to keep just platform existentially
+-- quantified and have the other type parameters concrete and fixed. Or we
+-- could pick some other type index such as base (absolute vs relative) and
+-- make it existential. But then we could also want to have two of them
+-- existential and the other one concrete. This is not nicely expressible in
+-- Haskell that we have so far.

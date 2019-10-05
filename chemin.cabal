@@ -26,10 +26,15 @@ flag dev
 
 library
   build-depends:      base             >= 4.11 && < 5.0
-                    , filepath         >= 1.4.2 && < 1.5
                     , exceptions       >= 0.4 && < 0.11
+                    , filepath         >= 1.4.2 && < 1.5
   exposed-modules:    System.Path
+                    , System.Path.IO
                     , System.Path.Internal
+                    , System.Path.Internal.Exception
+                    , System.Path.Internal.Normalization
+                    , System.Path.Internal.Predicate
+                    , System.Path.Manipulation
   if flag(dev)
     ghc-options:      -Wall -Werror -Wcompat
                       -Wincomplete-record-updates
