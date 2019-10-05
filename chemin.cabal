@@ -27,6 +27,7 @@ flag dev
 library
   build-depends:      base             >= 4.11 && < 5.0
                     , filepath         >= 1.4.2 && < 1.5
+                    , exceptions       >= 0.4 && < 0.11
   exposed-modules:    System.Path
                     , System.Path.Internal
   if flag(dev)
