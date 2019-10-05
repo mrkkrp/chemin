@@ -1,0 +1,53 @@
+name:                 chemin
+version:              0.0.1.0
+cabal-version:        1.18
+tested-with:          GHC==8.4.4, GHC==8.6.5
+license:              BSD3
+license-file:         LICENSE.md
+author:               Mark Karpov <markkarpov92@gmail.com>
+maintainer:           Mark Karpov <markkarpov92@gmail.com>
+homepage:             https://github.com/mrkkrp/chemin
+bug-reports:          https://github.com/mrkkrp/chemin/issues
+category:             Categories
+synopsis:             Well typed file paths and associated operations
+build-type:           Simple
+description:          Well typed file paths and associated operations.
+extra-doc-files:      CHANGELOG.md
+                    , README.md
+
+source-repository head
+  type:               git
+  location:           https://github.com/mrkkrp/chemin.git
+
+flag dev
+  description:        Turn on development settings.
+  manual:             True
+  default:            False
+
+library
+  build-depends:      base             >= 4.11 && < 5.0
+                    , filepath         >= 1.4.2 && < 1.5
+  exposed-modules:    System.Path
+                    , System.Path.Internal
+  if flag(dev)
+    ghc-options:      -Wall -Werror -Wcompat
+                      -Wincomplete-record-updates
+                      -Wincomplete-uni-patterns
+                      -Wnoncanonical-monad-instances
+  else
+    ghc-options:      -O2 -Wall
+  default-language:   Haskell2010
+
+test-suite tests
+  main-is:            Spec.hs
+  hs-source-dirs:     tests
+  type:               exitcode-stdio-1.0
+  build-depends:      base             >= 4.11 && < 5.0
+                    , chemin
+                    , hspec            >= 2.0 && < 3.0
+  build-tools:        hspec-discover   >= 2.0 && < 3.0
+  if flag(dev)
+    ghc-options:      -Wall -Werror
+  else
+    ghc-options:      -O2 -Wall
+  default-language:   Haskell2010
