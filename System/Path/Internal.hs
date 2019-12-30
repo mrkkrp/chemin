@@ -1,8 +1,10 @@
 {-# LANGUAGE CPP                 #-}
+{-# LANGUAGE ConstraintKinds     #-}
 {-# LANGUAGE DataKinds           #-}
 {-# LANGUAGE DeriveAnyClass      #-}
 {-# LANGUAGE DerivingVia         #-}
 {-# LANGUAGE ExplicitNamespaces  #-}
+{-# LANGUAGE FlexibleInstances   #-}
 {-# LANGUAGE GADTs               #-}
 {-# LANGUAGE KindSignatures      #-}
 {-# LANGUAGE LambdaCase          #-}
@@ -23,7 +25,7 @@ module System.Path.Internal
   , mk
   , any
 
-  , host
+  , hostPlatform
   , posix
   , win
   , abs
@@ -40,17 +42,22 @@ module System.Path.Internal
   , pattern Path
 
   , from
+
+  , forgetPlatform
+  , forgetBase
+  , forgetType
   )
 where
 
-import Control.Applicative
+-- import Control.Applicative
 import Control.Monad.Catch (MonadThrow (..))
-import Data.Foldable (asum)
+-- import Data.Foldable (asum)
+import Data.Kind (Constraint)
 import Data.Proxy
 import Prelude hiding (any, abs)
-import qualified System.Path.Internal.Exception as E
-import qualified System.Path.Internal.Normalization as N
-import qualified System.Path.Internal.Predicate as P
+-- import qualified System.Path.Internal.Exception as E
+-- import qualified System.Path.Internal.Normalization as N
+-- import qualified System.Path.Internal.Predicate as P
 
 data Path (p :: Platform) (b :: Base) (t :: Type) where
 
@@ -72,132 +79,55 @@ data Base = Abs | Rel
 
 data Type = Dir | File
 
-data ((x :: k) `Or` (y :: k)) (t :: k) where
-  Any :: (x `Or` y) t
-  First :: (x `Or` y) x
-  Second :: (x `Or` y) y
+class Unconstrained (x :: k)
+instance Unconstrained x
 
--- foo :: Path p b t
--- foo = PosixAbsDir "/foo/"
-
--- data SomePath = SomePath (Path p b t)
+data ((x :: k) `Or` (y :: k)) (c :: k -> Constraint) where
+  Any :: (x `Or` y) Unconstrained
+  First :: (x `Or` y) ((~) x)
+  Second :: (x `Or` y) ((~) y)
 
 mk ::
-  forall m p b t.
   MonadThrow m =>
-  ('Posix `Or` 'Win) p ->
-  ('Abs `Or` 'Rel) b ->
-  ('Dir `Or` 'File) t ->
+  ('Posix `Or` 'Win) pc ->
+  ('Abs `Or` 'Rel) bc ->
+  ('Dir `Or` 'File) tc ->
   FilePath ->
-  m (Path p b t)
-mk platform base type' path = undefined -- either throwM return $
-  -- case platform of
-  --   First ->
-  --     N.normalizePosix <$> P.isValidPosix path
+  (forall p b t. (pc p, bc b, tc t) => Path p b t -> m r) ->
+  m r
+mk Any Any Any path f =
+  f (PosixAbsFile path)
+mk First First First path f =
+  f (PosixAbsDir path)
+mk _ _ _ _ _ = undefined
 
-  -- either throwM return $ case p of
-    -- Any -> checkPlatform First path (checkBase b (checkType t (\_ fp -> _)))
-
-  -- case go p b t path :: Either E.Exception (Path p b t) of
-  --   Left e -> throwM e
-  --   Right x -> return x
-  where
-
-    checkPlatform ::
-      ('Posix `Or` 'Win) p' ->
-      FilePath ->
-      (Platform -> FilePath -> Either E.Exception (Path p' b' t')) ->
-      Either E.Exception (Path p' b' t')
-    checkPlatform = undefined
-
-    checkBase ::
-      ('Abs `Or` 'Rel) b' ->
-      Platform ->
-      FilePath ->
-      (Platform -> FilePath -> Either E.Exception (Path p' b' t')) ->
-      Either E.Exception (Path p' b' t')
-    checkBase = undefined
-
-    checkType ::
-      ('Dir `Or` 'File) t' ->
-      Platform ->
-      FilePath ->
-      (Platform -> FilePath -> Either E.Exception (Path p' b' t')) ->
-      Either E.Exception (Path p' b' t')
-    checkType = undefined
-
- -- ::
- --      ('Posix `Or` 'Win) p' ->
- --      ('Abs `Or` 'Rel) b' ->
- --      ('Dir `Or` 'File) t' ->
- --      FilePath ->
- --      Either E.Exception (Path p' b' t')
- --    go Any b t path =
- --      case
-
--- asum
-      -- [ forgetPlatform <$> go First b t path
-      -- , forgetPlatform <$> go Second b t path
-      -- , Left (E.IsNotValidPath path)
-      -- ]
-
---   case platform of
---     Any ->
---       case host of
---         First ->
-
---       case P.isValidPosix of
---         Nothing -> case P.isValidWin of
---           Nothing -> throwM (E.IsNotValidAny path)
---           Just path0 ->
---             case base of
---               Any ->
-
---       if Posix.isValid path
---         then undefined
---         else if Win.isValid path
---           then undefined
---           else
-
---     First ->
---       if P.isValidPosix path
---         then case base of
---           Any -> if p
-
--- if P.isValid
---         else throwM (IsNotValidPosix path)
---     Second ->
---       if Win.isValid path
---         then undefined
---         else throwM (IsNotValidWin path)
-
-any :: (x `Or` y) t
+any :: (x `Or` y) Unconstrained
 any = Any
 
 #if defined(mingw32_HOST_OS)
-host :: ('Posix `Or` 'Win) 'Win
-host = Second
+hostPlatform :: ('Posix `Or` 'Win) ((~) 'Win)
+hostPlatform = Second
 #else
-host :: ('Posix `Or` 'Win) 'Posix
-host = First
+hostPlatform :: ('Posix `Or` 'Win) ((~) 'Posix)
+hostPlatform = First
 #endif
 
-posix :: ('Posix `Or` 'Win) 'Posix
+posix :: ('Posix `Or` 'Win) ((~) 'Posix)
 posix = First
 
-win :: ('Posix `Or` 'Win) 'Win
+win :: ('Posix `Or` 'Win) ((~) 'Win)
 win = Second
 
-abs :: ('Abs `Or` 'Rel) 'Abs
+abs :: ('Abs `Or` 'Rel) ((~) 'Abs)
 abs = First
 
-rel :: ('Abs `Or` 'Rel) 'Rel
+rel :: ('Abs `Or` 'Rel) ((~) 'Rel)
 rel = Second
 
-dir :: ('Dir `Or` 'File) 'Dir
+dir :: ('Dir `Or` 'File) ((~) 'Dir)
 dir = First
 
-file :: ('Dir `Or` 'File) 'File
+file :: ('Dir `Or` 'File) ((~) 'File)
 file = Second
 
 pattern IsPosix :: Path 'Posix b t -> Path p b t
@@ -285,9 +215,6 @@ from Proxy Proxy Proxy = \case
 pattern Path :: FilePath -> Path p b t
 pattern Path path <- (from Proxy Proxy Proxy -> path)
 
--- data SomePlatform b t where
---   SomePlatform :: Path p b t -> SomePlatform p t
-
 forgetPlatform :: (forall p1. Path p1 b t -> r) -> Path p0 b t -> r
 forgetPlatform f = \case
   PosixAbsDir path -> f (PosixAbsDir path)
@@ -299,21 +226,24 @@ forgetPlatform f = \case
   WinRelDir path -> f (WinRelDir path)
   WinRelFile path -> f (WinRelFile path)
 
--- TODO So, this is interesting. Come think of it, it should be possible to
--- erase type indices of GADTs because then they are virtually existentials
--- and one would have to pattern match to discover actual types. It's not an
--- invalid thing to do afaiu because it doesn't compromise soundness of the
--- type system in any way. However, to do it we need to either do
--- continuation passing style thingy as shown above in 'forgetPlatform' or
--- to use an existential wrapper.
---
--- The problem with CPS is that we cannot have just a value of that type and
--- put it in e.g. a record.
---
--- The problem with existential wrapper though is that the approach is not
--- composable. We could desire to keep just platform existentially
--- quantified and have the other type parameters concrete and fixed. Or we
--- could pick some other type index such as base (absolute vs relative) and
--- make it existential. But then we could also want to have two of them
--- existential and the other one concrete. This is not nicely expressible in
--- Haskell that we have so far.
+forgetBase :: (forall b1. Path p b1 t -> r) -> Path p b0 t -> r
+forgetBase f = \case
+  PosixAbsDir path -> f (PosixAbsDir path)
+  PosixAbsFile path -> f (PosixAbsFile path)
+  PosixRelDir path -> f (PosixRelDir path)
+  PosixRelFile path -> f (PosixRelFile path)
+  WinAbsDir path -> f (WinAbsDir path)
+  WinAbsFile path -> f (WinAbsFile path)
+  WinRelDir path -> f (WinRelDir path)
+  WinRelFile path -> f (WinRelFile path)
+
+forgetType :: (forall t1. Path p b t1 -> r) -> Path p b t0 -> r
+forgetType f = \case
+  PosixAbsDir path -> f (PosixAbsDir path)
+  PosixAbsFile path -> f (PosixAbsFile path)
+  PosixRelDir path -> f (PosixRelDir path)
+  PosixRelFile path -> f (PosixRelFile path)
+  WinAbsDir path -> f (WinAbsDir path)
+  WinAbsFile path -> f (WinAbsFile path)
+  WinRelDir path -> f (WinRelDir path)
+  WinRelFile path -> f (WinRelFile path)
